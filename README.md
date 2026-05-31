@@ -1,2 +1,13 @@
-# C-Maze-Solver-DFS
-A C-based maze solver using Depth-First Search (DFS) with stack implementation.
+# 🧩 C-Maze Solver: 深度優先搜尋迷宮遊戲
+
+這是一個使用 **C 語言** 實作的自動尋路系統。本專案透過「堆疊 (Stack)」資料結構模擬「深度優先搜尋 (DFS)」演算法，能夠自動從複雜的迷宮中找出出口。
+
+## 🌟 專案亮點
+* **演算法實作**：捨棄簡單的遞迴，改用顯式堆疊 (Explicit Stack) 避免溢位。
+* **多圖支援**：可讀取外部 `.txt` 地圖，具備擴充性。
+* **自動校對**：內建路徑比對功能，確保演算法找出的路徑與正確解答一致。
+
+## 🎮 如何執行 (How to Run)
+1. **編譯程式碼**:
+   ```bash
+   gcc maze_solver_demo.c -o maze_solver
