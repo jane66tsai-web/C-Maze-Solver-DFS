@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>Maze Solver Interactive</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #f0f2f5; color: #333; margin: 0; padding: 20px; }
+        #maze-container { display: grid; justify-content: center; margin-top: 20px; gap: 2px; padding: 10px; background: #bdc3c7; border-radius: 5px; width: fit-content; margin-left: auto; margin-right: auto; }
+        .cell { width: 28px; height: 28px; background: white; border-radius: 2px; position: relative; }
+        .wall { background-color: #34495e; }
+        .player { background-color: #3498db; border-radius: 50%; width: 80%; height: 80%; position: absolute; top: 10%; left: 10%; z-index: 5; }
+        .visited { background-color: #ecf0f1; }
+        .path-dot { width: 6px; height: 6px; background: #bdc3c7; border-radius: 50%; position: absolute; top: 11px; left: 11px; }
+        .solution { background-color: #2ecc71; border: 1px solid #27ae60; box-sizing: border-box; transition: background 0.3s; }
+        .controls { margin: 20px; padding: 15px; background: white; border-radius: 10px; display: inline-block; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        select { padding: 8px; font-size: 14px; border-radius: 5px; border: 1px solid #ddd; }
+        button { padding: 8px 20px; font-size: 14px; cursor: pointer; background: #3498db; color: white; border: none; border-radius: 5px; margin-left: 10px; }
+        button:hover { background: #2980b9; }
+        #status { font-weight: bold; margin-top: 15px; color: #e67e22; height: 1.2em; }
+    </style>
+</head>
+<body>
+    <h1>🧩 迷宮挑戰：手動試煉 vs 演算法最佳解</h1>
+    
+    <div class="controls">
+        <select id="mazeSelect">
+            <option value="maze1">迷宮 1：基礎挑戰</option>
+            <option value="maze2">迷宮 2：複雜森林</option>
+            <option value="maze3">迷宮 3：幻影迴廊</option>
+            <option value="maze4">迷宮 4：終極螺旋</option>
+            <option value="maze5">迷宮 5：分岔挑戰</option>
+        </select>
+        <button onclick="loadMaze()">生成迷宮</button>
+        <button id="solveBtn" onclick="handleSolveClick()" style="background:#e67e22">揭曉 DFS 解法</button>
+    </div>
+
+    <div id="status">請點擊生成迷宮後，使用方向鍵開始</div>
+    <div id="maze-container"></div>
+
+    <script>
+        const mazes = {
+            maze1: ["+++++++++","+S      +","+ +++++ +","+ +   + +","+ +++ + +","+   + + +","+++++ + +","+       +","+ +++++++"],
+            maze2: ["++++++++++++++++++++++","+   +   ++ ++        +","      +     ++++++++++","+ +    ++  ++++ +++ ++","+ +   + + ++    +++  +","+          ++  ++  + +","+++++ + +      ++  + +","+++++ +++  + +  ++   +","+          + + S+ +  +","+++++ +  + + +     + +","++++++++++++++++++++++"],
+            maze3: ["+++++++","+S+   +","+ +++ +","+ + + +","+ + + +","+   + +","+++++++"],
+            maze4: ["+++++++++++++++","+S            +","+ +++++++++++ +","+ +         + +","+ + +++++++ + +","+ + +     + + +","+ + + +++ + + +","+ + + + + + + +","+ + +   + + + +","+ + +++++ + + +","+ +       + + +","+ +++++++++ + +","+           + +","+++++++++++++ +","              "],
+            maze5: ["+++++++++++++++++","+S  +     +     +","+ + + +++ + +++ +","+ +   +   + +   +","+ +++++ +++ + +++","+ +     +   +   +","+ + +++++ +++++ +","+ + +   + +     +","+   + + + + +++++","+ +++ + + +     +","+     +   +++++ +","+++++++ +       +","++++++++++++++++++"]
+        };
+
+        let currentGrid = [];
+        let playerPos = { r: 0, c: 0 };
+        let isSolving = false;
+        let finalPath = []; // 儲存找到的正確路徑
+
+        function loadMaze() {
+            const selected = document.getElementById('mazeSelect').value;
+            currentGrid = mazes[selected].map(row => row.split(''));
+            isSolving = false;
+            finalPath = []; 
+            document.getElementById('solveBtn').innerText = "揭曉 DFS 解法";
+            document.getElementById('status').innerText = "使用方向鍵移動，或點擊揭曉看解法";
+            
+            for(let r=0; r<currentGrid.length; r++) {
+                for(let c=0; c<currentGrid[r].length; c++) {
+                    if(currentGrid[r][c] === 'S') playerPos = {r, c};
+                }
+            }
+            renderMaze();
+            window.onkeydown = handleKey;
+        }
+
+        function renderMaze() {
+            const container = document.getElementById('maze-container');
+            container.innerHTML = '';
+            container.style.gridTemplateColumns = `repeat(${currentGrid[0].length}, 28px)`;
+            currentGrid.forEach((row, r) => {
+                row.forEach((cell, c) => {
+                    const div = document.createElement('div');
+                    div.className = 'cell ' + (cell === '+' ? 'wall' : (cell === 'O' ? 'solution' : 'path'));
+                    if(cell === '.') {
+                        const dot = document.createElement('div');
+                        dot.className = 'path-dot';
+                        div.appendChild(dot);
+                    }
+                    if(r === playerPos.r && c === playerPos.c) {
+                        const p = document.createElement('div');
+                        p.className = 'player';
+                        div.appendChild(p);
+                    }
+                    container.appendChild(div);
+                });
+            });
+        }
+
+        function handleKey(e) {
+            if(isSolving) return;
+            let nextR = playerPos.r, nextC = playerPos.c;
+            if(e.key === 'ArrowUp') nextR--;
+            else if(e.key === 'ArrowDown') nextR++;
+            else if(e.key === 'ArrowLeft') nextC--;
+            else if(e.key === 'ArrowRight') nextC++;
+
+            if(currentGrid[nextR] && currentGrid[nextR][nextC] !== '+') {
+                playerPos = {r: nextR, c: nextC};
+                renderMaze();
+                if(nextR === 0 || nextR === currentGrid.length-1 || nextC === 0 || nextC === currentGrid[0].length-1) {
+                    document.getElementById('status').innerText = "🎉 成功逃脫！";
+                }
+            }
+        }
+
+        async function handleSolveClick() {
+            if (isSolving) return;
+            if (finalPath.length > 0) {
+                await replayFinalPath(); // 如果已有路徑，則重播
+            } else {
+                await startDFS(); // 否則執行 DFS 搜尋
+            }
+        }
+
+        async function startDFS() {
+            isSolving = true;
+            document.getElementById('status').innerText = "DFS 演算法搜尋中...";
+            
+            // 重置
+            for(let r=0; r<currentGrid.length; r++) {
+                for(let c=0; c<currentGrid[r].length; c++) {
+                    if(currentGrid[r][c] === 'O' || currentGrid[r][c] === '.') currentGrid[r][c] = ' ';
+                }
+            }
+
+            let stack = [{r: playerPos.r, c: playerPos.c, path: []}];
+            let visited = new Set();
+            let found = false;
+
+            while(stack.length > 0) {
+                let curr = stack.pop();
+                let key = `${curr.r},${curr.c}`;
+                if(visited.has(key)) continue;
+                visited.add(key);
+
+                if(currentGrid[curr.r][curr.c] !== 'S') {
+                    currentGrid[curr.r][curr.c] = '.';
+                    renderMaze();
+                    await new Promise(r => setTimeout(r, 60)); // 搜尋速度
+                }
+
+                if(curr.r === 0 || curr.r === currentGrid.length-1 || curr.c === 0 || curr.c === currentGrid[0].length-1) {
+                    found = true;
+                    finalPath = curr.path; 
+                    // 標記結果
+                    finalPath.forEach(pos => { if(currentGrid[pos.r][pos.c]!=='S') currentGrid[pos.r][pos.c] = 'O'; });
+                    renderMaze();
+                    document.getElementById('status').innerText = "✅ 搜尋完成！再次點擊可「單獨播放」正確路徑。";
+                    document.getElementById('solveBtn').innerText = "單獨播放正確路徑";
+                    break;
+                }
+
+                const dirs = [{r:0,c:1},{r:0,c:-1},{r:1,c:0},{r:-1,c:0}];
+                for(let d of dirs) {
+                    let nr = curr.r+d.r, nc = curr.c+d.c;
+                    if(currentGrid[nr] && currentGrid[nr][nc] !== '+' && !visited.has(`${nr},${nc}`)) {
+                        stack.push({r: nr, c: nc, path: [...curr.path, {r: nr, c: nc}]});
+                    }
+                }
+            }
+            if(!found) document.getElementById('status').innerText = "❌ 搜尋完畢，此迷宮無解。";
+            isSolving = false;
+        }
+
+        async function replayFinalPath() {
+            isSolving = true;
+            document.getElementById('status').innerText = "正在單獨展示正確路徑...";
+            
+            // 清除所有的搜尋點（.）和舊路徑
+            for(let r=0; r<currentGrid.length; r++) {
+                for(let c=0; c<currentGrid[r].length; c++) {
+                    if(currentGrid[r][c] === 'O' || currentGrid[r][c] === '.') currentGrid[r][c] = ' ';
+                }
+            }
+            renderMaze();
+            await new Promise(r => setTimeout(r, 500)); // 播放前的停頓
+
+            // 像動畫一樣一格格畫出正確路徑
+            for (let pos of finalPath) {
+                if (currentGrid[pos.r][pos.c] !== 'S') {
+                    currentGrid[pos.r][pos.c] = 'O';
+                    renderMaze();
+                    await new Promise(r => setTimeout(r, 100)); // 播放速度
+                }
+            }
+            document.getElementById('status').innerText = "✨ 這就是最佳解答！";
+            isSolving = false;
+        }
+
+        loadMaze();
+    </script>
+</body>
+</html>
