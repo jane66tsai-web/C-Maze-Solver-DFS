@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <title>C-Maze Solver 互動遊戲版</title>
+    <style>
+        body { font-family: "Microsoft JhengHei", sans-serif; background: #f4f7f6; text-align: center; color: #2c3e50; }
+        .header { background: #2c3e50; color: white; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        #maze-container { display: grid; justify-content: center; margin: 20px auto; gap: 2px; padding: 10px; background: #95a5a6; border-radius: 5px; width: fit-content; }
+        .cell { width: 25px; height: 25px; background: white; transition: 0.2s; }
+        .wall { background-color: #2c3e50; }
+        .player { background-color: #3498db; border-radius: 50%; transform: scale(0.8); box-shadow: 0 0 10px #3498db; }
+        .visited { background-color: #ecf0f1; border: 1px solid #bdc3c7; }
+        .path-dot { background-color: #bdc3c7; border-radius: 50%; transform: scale(0.3); } /* 模擬 C 語言的 '.' */
+        .solution { background-color: #2ecc71; box-shadow: inset 0 0 5px #27ae60; } /* 模擬 C 語言的 'O' */
+        .controls { margin-bottom: 20px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; transition: 0.3s; margin: 5px; }
+        .btn-load { background: #3498db; color: white; }
+        .btn-solve { background: #e67e22; color: white; }
+        button:hover { opacity: 0.8; transform: translateY(-2px); }
+        #status { font-weight: bold; margin-top: 10px; color: #e74c3c; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧩 迷宮挑戰：手動試煉 vs DFS 自動求解</h1>
+    </div>
+
+    <div class="controls">
+        <select id="mazeSelect" style="padding: 10px; border-radius: 5px;">
+            <option value="maze1">地圖 1 (maze1.txt)</option>
+            <option value="maze2">地圖 2 (maze2.txt)</option>
+            <option value="maze3">地圖 3 (maze3.txt - 無解測試)</option>
+        </select>
+        <button class="btn-load" onclick="initGame()">載入迷宮</button>
+        <button class="btn-solve" onclick="startDFS()">啟動 DFS 求解</button>
+    </div>
+
+    <div id="status">提示：使用方向鍵控制藍色小球</div>
+    <div id="maze-container"></div>
+
+    <script>
+        // 直接整合你提供的 .txt 內容
+        const mazeData = {
+            maze1: ["+++++++++","+S      +","+ +++++ +","+ +   + +","+ +++ + +","+   + + +","+++++ + +","+       +","+ +++++++"],
+            maze2: ["++++++++++++++++++++++","+   +   ++ ++        +","      +     ++++++++++","+ +    ++  ++++ +++ ++","+ +   + + ++    +++  +","+          ++  ++  + +","+++++ + +      ++  + +","+++++ +++  + +  ++   +","+          + + S+ +  +","+++++ +  + + +     + +","++++++++++++++++++++++"],
+            maze3: ["+++++++","+S+   +","+ +++ +","+ + + +","+ + + +","+   + +","+++++++"]
+        };
+
+        let grid = [];
+        let player = { r: 0, c: 0 };
+        let isSolving = false;
+
+        function initGame() {
+            const mazeKey = document.getElementById('mazeSelect').value;
+            grid = mazeData[mazeKey].map(row => row.split(''));
+            isSolving = false;
+            document.getElementById('status').innerText = "提示：使用方向鍵控制藍色小球";
+            
+            // 尋找起點 S
+            for(let r=0; r<grid.length; r++) {
+                for(let c=0; c<grid[r].length; c++) {
+                    if(grid[r][c] === 'S') player = {r, c};
+                }
+            }
+            render();
+            window.onkeydown = handleInput;
+        }
+
+        function render() {
+            const container = document.getElementById('maze-container');
+            container.innerHTML = '';
+            container.style.gridTemplateColumns = `repeat(${grid[0].length}, 25px)`;
+
+            grid.forEach((row, r) => {
+                row.forEach((cell, c) => {
+                    const div = document.createElement('div');
+                    div.className = 'cell';
+                    if (cell === '+') div.classList.add('wall');
+                    else if (cell === '.') div.innerHTML = '<div class="path-dot"></div>';
+                    else if (cell === 'O') div.classList.add('solution');
+                    
+                    if (r === player.r && c === player.c) {
+                        const p = document.createElement('div');
+                        p.className = 'player';
+                        p.style.width = '100%'; p.style.height = '100%';
+                        div.appendChild(p);
+                    }
+                    container.appendChild(div);
+                });
+            });
+        }
+
+        function handleInput(e) {
+            if (isSolving) return;
+            let nr = player.r, nc = player.c;
+            if (e.key === 'ArrowUp') nr--;
+            else if (e.key === 'ArrowDown') nr++;
+            else if (e.key === 'ArrowLeft') nc--;
+            else if (e.key === 'ArrowRight') nc++;
+
+            if (grid[nr] && grid[nr][nc] !== '+') {
+                player = {r: nr, c: nc};
+                render();
+                checkWin();
+            }
+        }
+
+        function checkWin() {
+            // 簡單判定：走到邊界即為出口
+            if (player.r === 0 || player.r === grid.length - 1 || player.c === 0 || player.c === grid[0].length - 1) {
+                document.getElementById('status').innerText = "🎉 恭喜！你成功逃脫了！";
+            }
+        }
+
+        // 核心邏輯：模擬你的 C 語言 Stack-based DFS
+        async function startDFS() {
+            if (isSolving) return;
+            isSolving = true;
+            document.getElementById('status').innerText = "DFS 演算法搜尋中...";
+            
+            let stack = [{r: player.r, c: player.c, path: []}];
+            let visited = new Set();
+            let found = false;
+
+            while (stack.length > 0) {
+                let curr = stack.pop();
+                let key = `${curr.r},${curr.c}`;
+
+                if (visited.has(key)) continue;
+                visited.add(key);
+
+                // 更新畫面顯示搜尋過程 (.)
+                if (grid[curr.r][curr.c] !== 'S') {
+                    grid[curr.r][curr.c] = '.';
+                    render();
+                    await new Promise(r => setTimeout(r, 50)); // 0.05秒延遲
+                }
+
+                // 檢查出口
+                if (curr.r === 0 || curr.r === grid.length - 1 || curr.c === 0 || curr.c === grid[0].length - 1) {
+                    found = true;
+                    curr.path.forEach(pos => { grid[pos.r][pos.c] = 'O'; });
+                    render();
+                    document.getElementById('status').innerText = "✅ DFS 已找到路徑！(綠色標記)";
+                    break;
+                }
+
+                // 四個方向 (模擬你的 C 語言順序)
+                const dirs = [{r:1, c:0}, {r:-1, c:0}, {r:0, c:1}, {r:0, c:-1}];
+                for (let d of dirs) {
+                    let nr = curr.r + d.r, nc = curr.c + d.c;
+                    if (grid[nr] && grid[nr][nc] !== '+' && !visited.has(`${nr},${nc}`)) {
+                        stack.push({r: nr, c: nc, path: [...curr.path, {r: nr, c: nc}]});
+                    }
+                }
+            }
+            if (!found) document.getElementById('status').innerText = "❌ 此迷宮無解。";
+            isSolving = false;
+        }
+
+        initGame();
+    </script>
+</body>
+</html>
